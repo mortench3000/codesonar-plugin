@@ -16,7 +16,6 @@ import hudson.tasks.Publisher;
 import hudson.tasks.Recorder;
 import hudson.util.FormValidation;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -46,7 +45,6 @@ import org.kohsuke.stapler.QueryParameter;
  */
 public class CodeSonarPublisher extends Recorder {
 
-    private static String prefix = "[CodeSonar]";
     private String hubAddress;
     private String projectName;
 
@@ -79,8 +77,9 @@ public class CodeSonarPublisher extends Recorder {
     public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
         String expandedHubAddress = build.getEnvironment(listener).expand(Util.fixNull(hubAddress));
         String expandedProjectName = build.getEnvironment(listener).expand(Util.fixNull(projectName));
-        PrintStream console = listener.getLogger();
-
+        
+        httpService.setListener(listener);
+        
         if (expandedHubAddress.isEmpty()) {
             throw new AbortException("Hub address not provided");
         }
@@ -95,18 +94,12 @@ public class CodeSonarPublisher extends Recorder {
             analysisUrl = analysisService.getLatestAnalysisUrlForAProject(expandedHubAddress, expandedProjectName);
         }
         
-        console.printf("%s Analysis url: %s%n", prefix, analysisUrl);
-
         Analysis analysisActiveWarnings = analysisService.getAnalysisFromUrl(analysisUrl, UrlFilters.ACTIVE);
 
         String metricsUrl = metricsService.getMetricsUrlFromAnAnalysisId(expandedHubAddress, analysisActiveWarnings.getAnalysisId());
-        console.printf("%s Metrics url: %s%n", prefix, metricsUrl);
-        
         Metrics metrics = metricsService.getMetricsFromUrl(metricsUrl);
 
         String proceduresUrl = proceduresService.getProceduresUrlFromAnAnalysisId(expandedHubAddress, analysisActiveWarnings.getAnalysisId());
-        console.printf("%s Procedures url: %s%n", prefix, proceduresUrl);
-        
         Procedures procedures = proceduresService.getProceduresFromUrl(proceduresUrl);
 
         Analysis analysisNewWarnings = analysisService.getAnalysisFromUrl(analysisUrl, UrlFilters.NEW);
@@ -125,7 +118,7 @@ public class CodeSonarPublisher extends Recorder {
             conditionNamesAndResults.add(pair);
 
             build.setResult(validationResult);
-            console.printf("%s '%s' marked the build as %s%n", prefix, condition.getDescriptor().getDisplayName(), validationResult.toString());
+            listener.getLogger().println(String.format(("'%s' marked the build as %s"), condition.getDescriptor().getDisplayName(), validationResult.toString()));
         }
 
         build.getAction(CodeSonarBuildAction.class).getBuildActionDTO()
